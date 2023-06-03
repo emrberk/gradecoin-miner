@@ -1,3 +1,5 @@
+import threading
+
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.primitives.asymmetric import padding as asymmetric_padding
@@ -10,8 +12,11 @@ import requests
 import time
 import jwt
 from datetime import datetime
+from queue import Queue
 import hashlib
 import random
+from HashFinder import HashFinder
+from LossDetector import LossDetector
 
 
 class Miner:
@@ -19,6 +24,8 @@ class Miner:
         self.baseUrl = "https://gradecoin.xyz"
         self.fingerprint = "49fc44505a0cafe4f210f7cd157c5997b3b464e7482b6a6f0870f5f36270ace7"
         self.tries = 0
+        self.messageQueue = Queue()
+        self.stopEvent = threading.Event()
 
     def register(self):
         temp_key = b'0000000000000000'
@@ -139,13 +146,11 @@ class Miner:
         others = len(transactions)
         othersNeeded = self.blockSize - 1
         maxCount = others // othersNeeded
-        if len(myTransactions) == 0 and maxCount > 0 and self.tries <= 2:
+        if len(myTransactions) == 0 and maxCount > 0:
             self.makeTransaction(self.fingerprint, self.bots[random.randint(0, len(bots) - 1)], self.lowerLimit)
             time.sleep(2)
-            self.tries += 1
             self.mineBlock()
         if maxCount == 0:
-            print("Not enough transactions")
             return
 
         numBlocks = min(len(myTransactions), maxCount)
@@ -153,58 +158,46 @@ class Miner:
         myTransactionIds = list(myTransactions.keys())
 
         for i in range(numBlocks):
-            mined = False
-            nonce = 1
-            print("i will try to find a nonce..")
-            while not mined:
-                payload = {
-                    "transaction_list": [myTransactionIds[0]] + [transactionId for transactionId in transactionIds[:othersNeeded]],
-                    "nonce": nonce,
-                    "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-                }
-                hash = self.blake2s(payload)
-                if hash.startswith("0" * 5):
-                    print("hash =", hash, self.hashZeros)
-                if hash.startswith("0" * self.hashZeros):
-                    payload["hash"] = hash
-                    json_string = json.dumps(payload, separators=(',', ':'))
-                    jwtData = {
-                        "tha": hash,
-                        "iat": int(time.time()),
-                        "exp": int(time.time()) + 3600,
-                    }
-                    print('jwtdata =', jwtData)
-                    signedJwt = self.sign_jwt(jwtData)
-                    print('signedjwt =', signedJwt)
-                    print('jsonstring =', json_string)
-                    headers = {
-                        'Content-Type': 'application/json',
-                        'Authorization': f'Bearer {signedJwt}'
-                    }
-                    try:
-                        response = requests.post(f"{self.baseUrl}/block", data=json_string, headers=headers)
-                        print("i mined something")
-                        with open("./blocks.log", 'a+') as f:
-                            f.write(json.dumps(response.json()))
-                            f.write("\n")
-                        myTransactionIds = myTransactionIds[1:]
-                        transactionIds = transactionIds[othersNeeded:]
-                        mined = True
+            transactionList = [myTransactionIds[0]] + [transactionId for transactionId in transactionIds[:othersNeeded]]
+            payload = {
+                "transaction_list": transactionList,
+                "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+            }
+            print("threads will start...")
+            for j in range(10):
+                finder = HashFinder(payload, self.hashZeros, j, self.messageQueue, self.stopEvent)
+                finder.start()
+            lossDetector = LossDetector(self.stopEvent, transactionList, self.messageQueue)
+            lossDetector.start()
+            print("threads started")
+            message = self.messageQueue.get()
+            self.stopEvent.set()
+            print("i got something", message)
+            if message == "error":
+                self.mineBlock()
+                return
 
-                    except Exception as e:
-                        print(e)
-                else:
-                    nonce += 1
-                    continue
-
-
-    def blake2s(self, data):
-        serializedData = json.dumps(data, separators=(',', ':'))
-        hash_object = hashlib.blake2s(serializedData.encode())
-        hash_hex = hash_object.hexdigest()
-        return hash_hex
-
-
+            json_string = json.dumps(message, separators=(',', ':'))
+            jwtData = {
+                "tha": message["hash"],
+                "iat": int(time.time()),
+                "exp": int(time.time()) + 3600,
+            }
+            signedJwt = self.sign_jwt(jwtData)
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {signedJwt}'
+            }
+            try:
+                response = requests.post(f"{self.baseUrl}/block", data=json_string, headers=headers)
+                print("i mined something")
+                with open("./blocks.log", 'a+') as f:
+                    f.write(json.dumps(response.json()))
+                    f.write("\n")
+                myTransactionIds = myTransactionIds[1:]
+                transactionIds = transactionIds[othersNeeded:]
+            except Exception as e:
+                print(e)
 
 
 if __name__ == "__main__":
