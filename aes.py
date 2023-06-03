@@ -151,8 +151,9 @@ class Miner:
         if len(myTransactions) == 0 and maxCount > 0:
             self.makeTransaction(self.fingerprint, self.bots[random.randint(0, len(bots) - 1)], self.lowerLimit)
             time.sleep(2)
-            self.mineBlock()
+            return
         if maxCount == 0:
+            time.sleep(5)
             return
 
         numBlocks = min(len(myTransactions), maxCount)
@@ -165,24 +166,23 @@ class Miner:
                 "transaction_list": transactionList,
                 "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
             }
-            print("threads will start...")
+            print("Processes will start...")
             for j in range(10):
                 finder = HashFinder(payload, self.hashZeros, j, self.messageQueue)
                 self.finders.append(finder)
                 finder.start()
             lossDetector = LossDetector(transactionList, self.messageQueue)
             lossDetector.start()
-            print("threads started")
+            print("Processes started")
             message = self.messageQueue.get()
             self.stopEvent.set()
-            print("i got something", message)
             if message == "error":
+                print("I got an error. I will try again..")
                 active = multiprocessing.active_children()
                 for child in active:
                     child.terminate()
                 for child in active:
                     child.join()
-                self.mineBlock()
                 return
 
             json_string = json.dumps(message, separators=(',', ':'))
@@ -198,7 +198,7 @@ class Miner:
             }
             try:
                 response = requests.post(f"{self.baseUrl}/block", data=json_string, headers=headers)
-                print("i mined something")
+                print("I mined something!")
                 with open("./blocks.log", 'a+') as f:
                     f.write(json.dumps(response.json()))
                     f.write("\n")
@@ -212,16 +212,14 @@ class Miner:
                 child.terminate()
             for child in active:
                 child.join()
-            self.mineBlock()
 
 
 if __name__ == "__main__":
     miner = Miner()
     miner.getConfig()
     bots = miner.bots
-    #for bot in bots:
-    #    miner.makeTransaction(miner.fingerprint, bot, miner.lowerLimit)
-    miner.mineBlock()
+    while True:
+        miner.mineBlock()
 
 
 
