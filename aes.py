@@ -212,6 +212,7 @@ class Miner:
                 child.terminate()
             for child in active:
                 child.join()
+            self.mineBlock()
 
 
 if __name__ == "__main__":

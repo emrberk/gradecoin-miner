@@ -3,3 +3,6 @@
 {"res": "Error", "message": "First transaction in the block is not found in the system"}
 {"res": "Error", "message": "Given hash value does not match the actual block hash"}
 {"res": "Error", "message": "First transaction in the block is not found in the system"}
+{"res": "Error", "message": "Given hash value does not match the actual block hash"}
+{"res": "Error", "message": "Given hash value does not match the actual block hash"}
+{"res": "Error", "message": "Given hash value does not match the actual block hash"}

@@ -14,13 +14,23 @@ class HashFinder(multiprocessing.Process):
     def run(self):
         hash = ""
         tries = -1
+        newPayload = {}
         while not hash.startswith("0" * self.hashZeros):
             tries += 1
-            self.payload["nonce"] = self.order + tries
-            serializedData = json.dumps(self.payload, separators=(',', ':'))
+            newPayload = {
+                "transaction_list": self.payload["transaction_list"],
+                "nonce": self.order + tries,
+                "timestamp": self.payload["timestamp"]
+            }
+            serializedData = json.dumps(newPayload, separators=(',', ':'))
             hash_object = hashlib.blake2s(serializedData.encode())
             hash_hex = hash_object.hexdigest()
             hash = hash_hex
             tries += 1
-        self.payload["hash"] = hash
+        self.payload = {
+            "transaction_list": newPayload["transaction_list"],
+            "nonce": newPayload["nonce"],
+            "timestamp": newPayload["timestamp"],
+            "hash": hash
+        }
         self.queue.put(self.payload)
