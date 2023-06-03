@@ -1,3 +1,4 @@
+import multiprocessing
 import threading
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -12,7 +13,7 @@ import requests
 import time
 import jwt
 from datetime import datetime
-from queue import Queue
+from multiprocessing import Queue
 import hashlib
 import random
 from HashFinder import HashFinder
@@ -26,6 +27,7 @@ class Miner:
         self.tries = 0
         self.messageQueue = Queue()
         self.stopEvent = threading.Event()
+        self.finders = []
 
     def register(self):
         temp_key = b'0000000000000000'
@@ -165,15 +167,21 @@ class Miner:
             }
             print("threads will start...")
             for j in range(10):
-                finder = HashFinder(payload, self.hashZeros, j, self.messageQueue, self.stopEvent)
+                finder = HashFinder(payload, self.hashZeros, j, self.messageQueue)
+                self.finders.append(finder)
                 finder.start()
-            lossDetector = LossDetector(self.stopEvent, transactionList, self.messageQueue)
+            lossDetector = LossDetector(transactionList, self.messageQueue)
             lossDetector.start()
             print("threads started")
             message = self.messageQueue.get()
             self.stopEvent.set()
             print("i got something", message)
             if message == "error":
+                active = multiprocessing.active_children()
+                for child in active:
+                    child.terminate()
+                for child in active:
+                    child.join()
                 self.mineBlock()
                 return
 
@@ -198,6 +206,12 @@ class Miner:
                 transactionIds = transactionIds[othersNeeded:]
             except Exception as e:
                 print(e)
+
+            active = multiprocessing.active_children()
+            for child in active:
+                child.terminate()
+            for child in active:
+                child.join()
 
 
 if __name__ == "__main__":

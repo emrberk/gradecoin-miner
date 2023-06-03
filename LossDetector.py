@@ -1,18 +1,17 @@
-import threading
+import multiprocessing
 import time
 
 import requests
 
 
-class LossDetector(threading.Thread):
-    def __init__(self, stopEvent, transactions, messageQueue):
-        self.stopEvent = stopEvent
+class LossDetector(multiprocessing.Process):
+    def __init__(self, transactions, messageQueue):
         self.transactions = transactions
         self.messageQueue = messageQueue
         super().__init__()
 
     def run(self):
-        while not self.stopEvent.is_set():
+        while True:
             response = requests.get("https://gradecoin.xyz/transaction")
             currentTransactions = response.json()
             for transaction in self.transactions:
